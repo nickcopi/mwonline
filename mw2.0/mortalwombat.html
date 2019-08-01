@@ -14,7 +14,7 @@ if (!Function.prototype.bind) { // check if native implementation available
   };
 }
 
-var socket = io.connect('ws://10.167.10.166:3000');
+var socket = io.connect('ws://35.245.234.164:3000');
 socket.on('ready',(wom2)=>{
 	game.igScreen.wombats.push(Game.prototype.wombats[wom2]);
 	game.igScreen.softReset();
