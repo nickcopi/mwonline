@@ -1,0 +1,1337 @@
+<meta http-equiv="X-UA-Compatible" content="IE=edge"></meta>
+<script src="Assets/socket.io.js"></script> 
+<canvas id="canvas">No HTML5 support??? Try renaming as an HTML file and opening in Google Chrome.</canvas>
+<script>
+
+if (!Function.prototype.bind) { // check if native implementation available
+  Function.prototype.bind = function(){ 
+    var fn = this, args = Array.prototype.slice.call(arguments),
+        object = args.shift(); 
+    return function(){ 
+      return fn.apply(object, 
+        args.concat(Array.prototype.slice.call(arguments))); 
+    }; 
+  };
+}
+
+var socket = io.connect('ws://13.58.228.139:3040');
+socket.on('ready',(wom2)=>{
+	game.igScreen.wombats.push(Game.prototype.wombats[wom2]);
+	game.igScreen.softReset();
+	game.igScreen.mode = game.csScreen.mode;
+	game.screen = 3;
+});
+socket.on('update',player=>{
+	if(game.screen === 3){
+		game.igScreen.player[1].x = game.canvas.width-(player.x+player.width);
+		game.igScreen.player[1].y = player.y;
+		game.igScreen.player[1].hp = player.hp;
+		game.igScreen.player[1].flip = !player.flip;
+		game.igScreen.player[1].attackDelay = player.attackDelay;
+		game.igScreen.player[1].chargecount = player.chargecount;
+		game.igScreen.player[1].charging = player.charging;
+		game.igScreen.player[1].canDoubleJump = player.canDoubleJump;
+		game.igScreen.player[1].dead = player.dead;
+		game.igScreen.player[1].doubleJump = player.doubleJump;
+		game.igScreen.player[1].ducked = player.ducked;
+		game.igScreen.player[1].combo = player.combo;
+		game.igScreen.player[1].frame = player.frame;
+		game.igScreen.player[1].gravity = player.gravity;
+		game.igScreen.player[1].jumpValue = player.jumpValue;
+		game.igScreen.player[1].jumping = player.jumping;
+		game.igScreen.player[1].kicking = player.kicking;
+		game.igScreen.player[1].kpSize = player.kpSize;
+		game.igScreen.player[1].ppunching = player.ppunching;
+		game.igScreen.player[1].punching = player.punching;
+		game.igScreen.player[1].height = player.height;
+
+	}
+});
+socket.on('disconnected',()=>{
+	if(game.screen === 3){
+		game.igScreen.player[1].hp = 0;
+		game.igScreen.wins[0] = 2;
+	}
+});
+
+function newImage(src){
+    var tmp = new Image();
+    tmp.src = src;
+    return tmp
+}
+
+function isLetter(str) {
+	if(str ==" "){
+		return true;
+	}
+  return str.length === 1 && str.match(/[a-z]/i);
+}
+
+function drawImage(ctx,img, x, y, width, height, deg, flip){
+    //save current context before applying transformations
+    ctx.save();
+    //convert degrees to radians
+    if(flip){ 
+        var rad = deg * Math.PI / 180;
+    }else{
+        var rad = 2*Math.PI - deg * Math.PI / 180;
+    }
+    //set the origin to the center of the image
+    ctx.translate(x + width/2, y + height/2);
+    //rotate the canvas around the origin
+    ctx.rotate(rad);
+    if(flip){
+        //flip the canvas
+        ctx.scale(-1,1);
+    }
+    //draw the image    
+    ctx.drawImage(img, -width/2, -height/2, width, height);
+    //restore the canvas
+    ctx.restore();
+}
+
+
+// Up there is some utility
+
+
+
+
+//get into the objects that will be constructed
+
+
+function Screen(mode,bg){//different screens, ingame, menu, other 
+	this.bg = bg;
+	this.mode = mode;
+	this.faders = new Array();
+	this.render;
+	this.update;
+	this.projectiles = new Array();
+	this.collisionManager;
+	this.collide;
+	this.reset;
+	this.selected = 0;
+	this.aSelected = 4;
+	this.items;
+	this.wins;
+	this.wombats = new Array();
+	this.interval;
+	this.locked = false;
+}
+
+function Wombat(name,combos,atk,spd,def,hp,ultimate,primary,img){//used for hardcoded specific wombat character data
+	this.name = name;
+	this.combos = combos;
+	this.atk = atk;
+	this.spd = spd;
+	this.def = def
+	this.hp = hp;
+	this.ultimate = ultimate;
+	this.primary = primary;
+	this.img = img;
+	this.power = new Array();
+}
+
+
+
+function Player(wombat,width,height,x,y,flip,id){ //idk u guess
+	this.x = x;
+	this.y = y;
+	this.name = wombat.name;
+	this.img = wombat.img;
+	this.atk = wombat.atk;
+	this.spd = wombat.spd / 5 + 5;
+	this.def = wombat.def;
+	this.hp = wombat.hp * 10 + 100;
+	this.maxHp = this.hp;
+	this.attacks = new Array();
+	this.attacks[0] = wombat.primary;
+	this.attacks[1] = wombat.ultimate;
+	this.attacks[2] = new Attack();
+	this.attacks[3] = new Attack();
+	this.sayings = wombat.sayings;
+	this.width = width;
+	this.height = height;
+	this.flip = flip;
+	this.frame = 0;
+	this.ducked = false;
+	this.jumping = false;
+	this.gravity = 12;
+	this.maxJump = 400;
+	this.jumpValue = 0;
+	this.doubleJump = true;
+	this.canDoubleJump = false;
+	this.wins = 0;
+	this.kicking = false;
+	this.punching = false;
+	this.combo = new Array();
+	this.kpSize = 50;
+	this.attackDelay = .2*60;
+	this.kickInterval;
+	this.punchInterval;
+	this.bubbles = new Array();
+	this.dead = false;
+	this.combos = wombat.combos;
+	this.power = wombat.power;
+	this.ppunching = false;
+	this.id = id;
+	this.charging = false;
+	this.chargecount = 0;
+}
+
+function Fader(text,x,y,color,size,timer){
+	this.text = text;
+	this.x = x;
+	this.y = y;
+	this.color = color;
+	this.size = size;
+	this.timer = 2;
+}
+
+function Bubble(text){
+	this.text = text;
+	this.width = 261;
+	this.height = 189;
+	this.img = newImage("Assets/speech bubble.png");
+}
+
+function Attack(projectile){ // individual attacks for chars, something intended to be inherited from for real attacks
+	this.timer = 0;
+	this.projectile = projectile;
+}
+
+function Projectile(x,y,width,height,spdX,spdY,dmg,img,flip,owner,pushback,stun){
+	this.x = x;
+	this.y = y;
+	this.width = width;
+	this.height = height;
+	this.spdX = spdX;
+	this.spdY = spdY;
+	this.dmg = dmg;
+	this.img = img;
+	this.flip = flip;
+	this.id = owner;
+	this.pushback = pushback;
+	this.stun = stun;
+}
+
+function ComboItem(id){
+	this.id = id;
+	this.timer = 2;
+}
+
+function lbItem(name,score){
+	this.name = name;
+	this.score = score;
+}
+
+function Game(){ //Make the game object class like  thing a thing
+	this.interval;
+	this.width = 1100;
+	this.height = 700;
+	this.update;
+	this.render;
+	this.wombats = new Array();
+	this.keys = new Array();
+	this.screens = ["homeScreen","mmScreen","csScreen","igScreen","inScreen","pScreen","lbScreen","wnScreen"];
+	this.screen = 0;
+}
+
+Game.prototype.init = function(){
+	this.canvas  = document.getElementById('canvas');
+	this.ctx  = this.canvas.getContext('2d');
+	this.canvas.width = this.width;
+	this.canvas.height = this.height;
+	this.interval = setInterval(this.update.bind(this),1000/60);
+	this.music = new Audio("Assets/Music.wav");
+	this.music.addEventListener('ended', function() {
+    	this.currentTime = 0;
+    	this.play();
+	}, false);
+	this.music.play();
+	if(localStorage.leaderboard){
+		this.leaderboard = JSON.parse(localStorage.leaderboard);
+	} else {
+		this.leaderboard = new Array();
+	}
+	
+}
+
+//hardcoded , yo
+Game.prototype.bgs = [newImage("Assets/bg/Dojo.png"),newImage("Assets/bg/Menu.png"),newImage("Assets/bg/title screen.png")];
+Game.prototype.wombats = new Array();
+Game.prototype.wombats.push(new Wombat("Kombat Wombat",["jumpduckpunch"],5,3,6,6,new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png",false))), new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png"),false)),[newImage("Assets/Kombat Wombat/Kombat Wombat.png"),newImage("Assets/Kombat Wombat/Kombat Ball.png"),newImage("Assets/Kombat Wombat/Kombat Wombat Punch.png"),newImage("Assets/Kombat Wombat/Kombat Wombat Kick.png"),newImage("Assets/Kombat Wombat/powerpunch.png")]));
+Game.prototype.wombats.push(new Wombat("El Chichesto",["punchduckkick"],7,5,5,3,new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png",false))), new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png"),false)),[newImage("Assets/El Chichesto/El Chichesto.png"),newImage("Assets/El Chichesto/El Chichesto Ball.png"),newImage("Assets/El Chichesto/El Chichesto Punch.png"),newImage("Assets/El Chichesto/El Chichesto Kick.png"),newImage("Assets/El Chichesto/Chichesto Stab.png"),newImage("Assets/El Chichesto/Chichesto Stab.png")]));
+Game.prototype.wombats.push(new Wombat("Erwom",["kickduckjump"],6,3,4,7,new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png",false))), new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png"),false)),[newImage("Assets/Erwom/Erwom.png"),newImage("Assets/Erwom/Erwom Ball.png"),newImage("Assets/Erwom/Erwom Punch.png"),newImage("Assets/Erwom/Erwom Kick.png")]));
+Game.prototype.wombats.push(new Wombat("Messenger Wombat",["duckpunch"],4,9,3,4,new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png",false))), new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png"),false)),[newImage("Assets/MW/MW.png"),newImage("Assets/MW/MW Ball.png"),newImage("Assets/MW/MW Punch.png"),newImage("Assets/MW/MW Kick.png")]));
+Game.prototype.wombats.push(new Wombat("Wombyte",["punchduckjump"],8,6,2,4,new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png",false))), new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png"),false)),[newImage("Assets/Wombyte/Wombyte.png"),newImage("Assets/Wombyte/Wombyte Ball.png"),newImage("Assets/Wombyte/Wombyte Punch.png"),newImage("Assets/Wombyte/Wombyte Kick.png")]));
+Game.prototype.dummy = new Wombat("Dummy",[],8,6,2,40,new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png",false))), new Attack(new Projectile(55,110,50,50,20,2,5,newImage("Assets/wombat template.png"),false)),[newImage("Assets/godsey.png"),newImage("Assets/Wombyte/Wombyte Ball.png"),newImage("Assets/Wombyte/Wombyte Punch.png"),newImage("Assets/Wombyte/Wombyte Kick.png")]);
+
+Game.prototype.wombats[0].power[0] = function(game){
+	this.atk = this.atk * 2;
+	this.ppunching = true;
+	this.punching = false;
+	this.attacks[2].timer = 0;
+	this.punch();
+	other = null;
+	for(x in game.igScreen.player){
+		if(game.igScreen.player[x] != this){
+			other = game.igScreen.player[x];
+		}
+	}
+	game.igScreen.player[x].x += 50 - (this.flip* +100);
+//	this.ppunchInterval = setInterval(function(){this.frame = 0;if(this.ppunching){this.ppunching = false;this.atk = this.atk/2}}.bind(this),this.attackDelay/60 * 1000 /1.5);
+
+}
+
+Game.prototype.wombats[1].power[0] = function(game){
+	this.charging = true;
+	this.chargecount = 0;
+	this.width = 360;
+	this.atk = .2 * this.atk;
+}
+
+Game.prototype.wombats[2].power[0] = function(game){
+	game.igScreen.projectiles.push(new Projectile(this.x,this.y,100,100,20 + (this.flip * -40),0,15,newImage("Assets/projectiles/BinBall.png"),this.flip,this.id,true));
+}
+
+
+Game.prototype.wombats[3].power[0] = function(game){
+	if(this.y>game.canvas.height/2){
+		game.igScreen.projectiles.push(new Projectile(this.x,this.y,50,30,20 + (this.flip * -40),20,5,newImage("Assets/projectiles/Letter.png"),this.flip,this.id));
+		//this.x -= 20 + (this.flip * -40);
+	}
+	
+
+}
+
+Game.prototype.wombats[4].power[0] = function(game){
+	game.igScreen.projectiles.push(new Projectile(this.x+this.width/2,this.y+40,75,15,20 + (this.flip * -40),0,20,newImage("Assets/projectiles/Laser.png"),this.flip,this.id));
+}
+
+
+Game.prototype.audio = new Array(new Audio(),new Audio());
+Game.prototype.audio[0].src = "Assets/Wombality.mp3";
+Game.prototype.audio[1].src = "Assets/Fight.mp3";
+//ingame screen prototype , move to button func 
+
+Game.prototype.homeScreen = new Screen();
+Game.prototype.homeScreen.render = function(){
+	this.ctx.drawImage(Game.prototype.bgs[2],0,0,this.width,this.height);
+}
+Game.prototype.homeScreen.update = function(){
+	if(this.keys[13] || this.keys[32] || this.keys[27]){
+		if(this.leaderboard.length>0){
+			this.screen = 1;
+			this.keys = new Array();
+		} else {
+			game.inScreen.reset();
+			game.inScreen.mode = 1;
+			game.screen = 4;
+			this.keys = new Array();
+		}
+		
+	}	
+}
+
+
+
+Game.prototype.lbScreen = new Screen();
+
+Game.prototype.lbScreen.render = function(){
+	this.ctx.fillStyle="#000044";//dark  blue
+	this.ctx.drawImage(Game.prototype.bgs[1],0,0,this.width,this.height);
+	this.ctx.fillStyle = "#ff9f2b";// orange
+	this.ctx.font = "100px mk1";
+	this.ctx.fillText("Top Players",this.canvas.width/2 - this.ctx.measureText("Top Players").width/2,100);
+	top5 = new Array();
+	tempLeaderboard = new Array();
+	for(x in this.leaderboard){
+		tempLeaderboard.push(this.leaderboard[x]);
+	}
+	leaders = this.leaderboard.length;
+	if(leaders>5){
+		leaders = 5;
+	}
+	for(i=0;i<leaders;i++){
+		top5.push(new lbItem("",0));
+	}
+
+
+	for(i=0;i<leaders;i++){
+		for(x in tempLeaderboard){
+			if(top5[i].score < tempLeaderboard[x].score){
+				top5[i] = tempLeaderboard[x];
+			}
+			tempLeaderboard.splice(tempLeaderboard.indexOf(top5[i]),1);
+			x++;
+			break;
+		}
+	} 
+	this.ctx.font = "50px mk1";
+	this.ctx.fillStyle = "yellow";
+	for(x in top5){
+		this.ctx.fillText(top5[x].name+ " " + top5[x].score,this.canvas.width/2 - this.ctx.measureText(top5[x].name+ " " + top5[x].score).width/2, 100*x + 220);
+	}
+
+}
+
+
+Game.prototype.lbScreen.update = function(){
+	if(this.keys[13] || this.keys[32] || this.keys[27]){
+		this.mmScreen.reset();
+		this.screen = 1;
+		this.keys = new Array();
+	}
+}
+
+Game.prototype.wnScreen = new Screen(1);
+Game.prototype.wnScreen.reset = function(winner,bg,img){
+	this.mode = winner;
+	this.selected = "";
+	this.bg = bg;
+	this.img = img;
+}
+
+
+Game.prototype.wnScreen.render = function(){
+	this.ctx.drawImage(Game.prototype.bgs[0],0,0,this.width,this.height);
+	this.ctx.fillStyle = "#ff9f2b";// orange
+	this.ctx.font = "100px mk1";
+	this.ctx.fillText("Player " + (Number(this.wnScreen.mode)+ 1) + " wins!",this.canvas.width/2 - this.ctx.measureText("Player " + (Number(this.wnScreen.mode) +1) + " wins!").width/2,100);
+	this.ctx.font = "30px mk1";
+	this.ctx.fillStyle = "yellow";
+	this.ctx.fillText("Enter your name.",this.canvas.width/2 - this.ctx.measureText("Enter your name.").width/2,200);
+	this.ctx.font = "75px mk1";
+	this.ctx.fillText(this.wnScreen.selected,this.canvas.width/2 - this.ctx.measureText(this.wnScreen.selected).width/2,300);
+	this.ctx.drawImage(this.wnScreen.img,this.canvas.width/2 - 100,380)
+}
+
+Game.prototype.wnScreen.update = function(){
+	for(x in this.keys){
+		if(this.keys[x]){
+			if(x==8 || x==46){
+				this.wnScreen.selected = this.wnScreen.selected.substr(0,this.wnScreen.selected.length-1);
+			}else if(x == 13){
+				if(this.wnScreen.selected.length>0){
+					found = false;
+					for(x in this.leaderboard){
+						if(this.leaderboard[x].name == this.wnScreen.selected){
+							this.leaderboard[x].score++;
+							found = true;
+							this.keys = new Array();
+							break;
+						}
+					}
+					if(!found){
+						this.leaderboard.push(new lbItem(this.wnScreen.selected,1));
+					}
+					localStorage.leaderboard = JSON.stringify(this.leaderboard);
+					this.mmScreen.reset();
+					this.screen = 1;
+				}
+				
+			} else {
+				if(isLetter(String.fromCharCode(x))&& this.wnScreen.selected.length<13){
+					this.wnScreen.selected += String.fromCharCode(x);
+				}
+			}
+			this.keys[x] = false;
+		}
+	}
+}
+
+Game.prototype.inScreen = new Screen(1);
+Game.prototype.inScreen.bg = Game.prototype.bgs[0];
+Game.prototype.inScreen.reset = function(){
+	this.selected = 0;
+}
+Game.prototype.inScreen.render = function(){
+	this.ctx.fillStyle="#000044";//dark  blue
+	this.ctx.drawImage(Game.prototype.bgs[1],0,0,this.width,this.height);
+	//this.ctx.fillRect(0,0,this.width,this.height);
+	switch(this.inScreen.selected){
+		case 0:
+			this.ctx.fillStyle = "#ff9f2b";// orange
+			this.ctx.font = "100px mk1";
+			this.ctx.fillText("Instructions",this.canvas.width/2 - this.ctx.measureText("Instructions").width/2,100);
+			this.ctx.font = "50px mk1";
+			this.ctx.fillStyle = "yellow";
+			this.ctx.fillText("The objective of this game is to defeat your",this.canvas.width/2 - this.ctx.measureText("The objective of this game is to defeat your").width/2,250);
+			this.ctx.fillText("opponent in battle. This can be done by punching,",this.canvas.width/2 - this.ctx.measureText("opponent in battle. This can be done by punching,").width/2,300);
+			this.ctx.fillText("kicking, or performing character unique combos.",this.canvas.width/2 - this.ctx.measureText("kicking, or performing character unique combos.").width/2,350);
+			this.ctx.fillText("The first player to defeat their opponent three times",this.canvas.width/2 - this.ctx.measureText("The first player to defeat their opponent three times").width/2,400);
+			this.ctx.fillText("will be awarded a submission to the leaderboard.",this.canvas.width/2 - this.ctx.measureText("will be awarded a submission to the leaderboard.").width/2,450);
+			//this.ctx.fillText("Each round of combat will be limited to 99 seconds",this.canvas.width/2 - this.ctx.measureText("Each round of combat will be limited to 99 seconds").width/2,450);
+		//	this.ctx.fillText("and if this time is exceeded, the player with the",this.canvas.width/2 - this.ctx.measureText("and if this time is exceeded, the player with the").width/2,500);
+			///this.ctx.fillText("most health will be given the win. In the case of",this.canvas.width/2 - this.ctx.measureText("most health will be given the win. In the case of").width/2,550);
+		//	this.ctx.fillText("a tie the round winner will be chosen at random.",this.canvas.width/2 - this.ctx.measureText("a tie the round winner will be chosen at random.").width/2,600);
+		break;
+		case 1:
+			this.ctx.fillStyle = "#ff9f2b";// orange
+			this.ctx.font = "100px mk1";
+			this.ctx.fillText("Commands",this.canvas.width/2 - this.ctx.measureText("Commands").width/2,100);
+			this.ctx.font = "50px mk1";
+			this.ctx.fillRect(this.canvas.width/4 - this.ctx.measureText("Player 1").width/4,262,this.ctx.measureText("Player 1").width,4);
+			this.ctx.fillRect(this.canvas.width*.75 - this.ctx.measureText("Player 1").width*.75,262,this.ctx.measureText("Player 1").width,4);
+			this.ctx.fillStyle = "yellow";
+			//Player 1
+			this.ctx.fillText("Player 1",this.canvas.width/4 - this.ctx.measureText("Player 1").width/4,200 + 50);
+			this.ctx.font = "30px mk1";
+			this.ctx.fillText("A - Move Left",this.canvas.width/4 - this.ctx.measureText("A - Move Left").width/4,250 + 50);
+			this.ctx.fillText("D - Move Right",this.canvas.width/4 - this.ctx.measureText("D - Move Right").width/4,290 + 50);
+			this.ctx.fillText("S - Block-Duck",this.canvas.width/4 - this.ctx.measureText("S - Block-Duck").width/4,330 + 50);
+			this.ctx.fillText("W - Jump",this.canvas.width/4 - this.ctx.measureText("W - Jump").width/4,370 + 50);
+			this.ctx.fillText("Q - Punch",this.canvas.width/4 - this.ctx.measureText("Q - Punch").width/4,410 + 50);
+			this.ctx.fillText("E - Kick",this.canvas.width/4 - this.ctx.measureText("E - Kick").width/4,450 + 50);
+			//Player 2
+			this.ctx.font = "50px mk1";
+			this.ctx.fillText("Player 2",this.canvas.width*.75 - this.ctx.measureText("Player 2").width*.75,200 + 50);
+			this.ctx.font = "30px mk1";
+			this.ctx.fillText("J - Move Left",this.canvas.width*.75 - this.ctx.measureText("J - Move Left").width*.75,250 + 50);
+			this.ctx.fillText("L - Move Right",this.canvas.width*.75 - this.ctx.measureText("L - Move Right").width*.75,290 + 50);
+			this.ctx.fillText("K - Block-Duck",this.canvas.width*.75 - this.ctx.measureText("K - Block-Duck").width*.75,330 + 50);
+			this.ctx.fillText("I - Jump",this.canvas.width*.75 - this.ctx.measureText("I - Jump").width*.75,370 + 50);
+			this.ctx.fillText("U - Punch",this.canvas.width*.75 - this.ctx.measureText("U - Punch").width*.75,410 + 50);
+			this.ctx.fillText("O - Kick",this.canvas.width*.75 - this.ctx.measureText("O - Kick").width*.75,450 + 50);
+			//other
+			this.ctx.fillText("Esc - Pause",this.canvas.width/2 - this.ctx.measureText("Esc - Pause").width/2,550);
+		break;
+		case 2:
+			this.ctx.fillStyle = "#ff9f2b";// orange
+			this.ctx.font = "100px mk1";
+			this.ctx.fillText("Modes",this.canvas.width/2 - this.ctx.measureText("Modes").width/2,100);
+			this.ctx.font = "50px mk1";
+			this.ctx.fillRect(this.canvas.width/2 - this.ctx.measureText("2 Player Mode").width/2,216,this.ctx.measureText("2 Player Mode").width,4);
+			this.ctx.fillRect(this.canvas.width/2 - this.ctx.measureText("Dummy Training").width/2,336,this.ctx.measureText("Dummy Training").width,4);
+			this.ctx.fillRect(this.canvas.width/2 - this.ctx.measureText("Simple AI").width/2,456,this.ctx.measureText("Simple AI").width,4);
+			this.ctx.fillStyle = "yellow";
+			this.ctx.fillText("2 Player Mode",this.canvas.width/2 - this.ctx.measureText("2 Player Mode").width/2,200);
+			this.ctx.fillText("Dummy Training",this.canvas.width/2 - this.ctx.measureText("Dummy Training").width/2,320);
+			this.ctx.fillText("Simple AI",this.canvas.width/2 - this.ctx.measureText("Simple AI").width/2,440);
+			this.ctx.font = "30px mk1"
+			this.ctx.fillText("Traditional local multiplayer. Fight against a friend. Primary mode of play.",this.canvas.width/2 - this.ctx.measureText("Traditional local multiplayer. Fight against a friend. Primary mode of play.").width/2,255);
+			this.ctx.fillText("Single player mode intended for practice with characters and combos.",this.canvas.width/2 - this.ctx.measureText("Single player mode intended for practice with characters and combos.").width/2,372);
+			this.ctx.fillText("Single player mode for practice against easy bots.",this.canvas.width/2 - this.ctx.measureText("Single player mode for practice against easy bots.").width/2,488);
+			this.ctx.fillText("Not the primary mode of play.",this.canvas.width/2 - this.ctx.measureText("Not the primary mode of play.").width/2,518);
+		break;// Not reccomended for those trying to get a feel for the game.
+	}
+	
+}
+Game.prototype.inScreen.items = new Array;
+Game.prototype.inScreen.items.length = 3;
+Game.prototype.inScreen.update = function(){
+	if(this.keys[13]||this.keys[32]){
+		if(this.inScreen.selected<this.inScreen.items.length-1){
+			this.inScreen.selected++;
+		} else {
+			this.screen = this.inScreen.mode;
+			this[this.screens[this.inScreen.mode]].reset();
+		}
+		
+	}
+	if(this.keys[27]){
+		this.screen = this.inScreen.mode;
+		this[this.screens[this.inScreen.mode]].reset();
+	}
+	this.keys = new Array();
+}
+
+
+Game.prototype.pScreen = new Screen();
+Game.prototype.pScreen.render = function(){
+	this.ctx.fillStyle="#000044";//dark  blue
+	this.ctx.drawImage(Game.prototype.bgs[0],0,0,this.width,this.height);
+	this.ctx.fillStyle = "#ff9f2b";// orange
+	this.ctx.font = "100px mk1";
+	this.ctx.fillText("PAUSED",this.canvas.width/2 - this.ctx.measureText("PAUSED").width/2,300);
+	this.ctx.fillStyle = "yellow";
+	this.ctx.font = "30px mk1";
+	this.ctx.fillText("Esc for menu",this.canvas.width/2 - this.ctx.measureText("Esc for menu").width/2,340);
+	this.ctx.fillText("Enter to resume",this.canvas.width/2 - this.ctx.measureText("Enter to resume").width/2,380);	
+}
+Game.prototype.pScreen.update = function(){
+	if(this.keys[27]){
+		this.screen = 1;
+		this.keys = new Array();
+		if(this.igScreen.mode == 4){
+			socket.emit('leaving');
+			this.igScreen.mode = 3;
+		}
+		//You need to kill the ingame enviroment because otherwise it wont be reset or idk maybe kill it on start but handle that somewhere nick
+	}
+	if(this.keys[13]||this.keys[32]){
+		this.screen = 3;
+		this.keys = new Array();
+	}
+}
+
+Game.prototype.mmScreen = new Screen();
+Game.prototype.mmScreen.reset = function(){
+	this.selected = 0;
+}
+
+Game.prototype.mmScreen.selector = newImage("Assets/Selector.png")
+
+Game.prototype.mmScreen.render = function(){
+	this.ctx.fillStyle="#000044";//dark blue
+	this.ctx.drawImage(Game.prototype.bgs[1],0,0,this.width,this.height);
+	this.ctx.fillStyle = "#ff9f2b";// orange
+	this.ctx.font = "100px mk1";
+	this.ctx.fillText("MORTAL WOMBAT",this.canvas.width/2 - this.ctx.measureText("MORTAL WOMBAT").width/2,100);
+	//this.ctx.globalAlpha = .5;
+	this.ctx.drawImage(this.mmScreen.selector,this.canvas.width/2 - 150,this.mmScreen.selected * 80 + 175,300,60);
+	//this.ctx.fillRect(this.canvas.width/2 - 150,this.mmScreen.selected * 100 + 175,300,60);
+	//this.ctx.globalAlpha = 1;
+	this.ctx.fillStyle = "yellow";
+	this.ctx.font = "50px mk1";
+	this.ctx.fillText("2 Player",this.canvas.width/2 - this.ctx.measureText("2 Player").width/2,220);
+	this.ctx.fillText("Dummy Training",this.canvas.width/2 - this.ctx.measureText("Dummy Training").width/2,300);
+	this.ctx.fillText("Simple AI",this.canvas.width/2 - this.ctx.measureText("Simple AI").width/2,380);
+	this.ctx.fillText("Leaderboard",this.canvas.width/2 - this.ctx.measureText("Leaderboard").width/2,460);
+	this.ctx.fillText("Instructions",this.canvas.width/2 - this.ctx.measureText("Instructions").width/2,540);
+	this.ctx.fillText("Online",this.canvas.width/2 - this.ctx.measureText("Online").width/2,620);
+}
+Game.prototype.mmScreen.update = function(){
+	if(this.keys[83]||this.keys[75]||this.keys[40]){
+		if(this.mmScreen.items.length-1>this.mmScreen.selected){
+			this.mmScreen.selected++;	
+		} else {
+			this.mmScreen.selected = 0;
+		}
+		
+		this.keys = new Array();
+	}
+	if(this.keys[87]||this.keys[73]||this.keys[38]){
+		if(this.mmScreen.selected>0){
+			this.mmScreen.selected--;
+		} else {
+			this.mmScreen.selected = this.mmScreen.items.length-1;
+		}
+		
+		this.keys = new Array();
+	}
+	if(this.keys[13]||this.keys[32]){
+		this.keys = new Array();
+		this.mmScreen.items[this.mmScreen.selected](this);
+	}
+}
+Game.prototype.mmScreen.items = new Array();
+
+Game.prototype.mmScreen.items[0] = function(game){
+	game.csScreen.reset();
+	game.csScreen.mode = 1;
+	game.screen = 2;
+}
+Game.prototype.mmScreen.items[1] = function(game){
+	game.csScreen.reset();
+	game.csScreen.mode = 2;
+	game.screen = 2;
+}
+Game.prototype.mmScreen.items[2] = function(){
+	game.csScreen.reset();
+	game.csScreen.mode = 3;
+	game.screen = 2;
+}
+Game.prototype.mmScreen.items[3] = function(){
+	game.screen = 6;
+}
+Game.prototype.mmScreen.items[4] = function(game){
+	game.inScreen.reset();
+	game.inScreen.mode = 1;
+	game.screen = 4;
+}
+Game.prototype.mmScreen.items[5] = function(game){
+	game.csScreen.reset();
+	game.csScreen.mode = 4;
+	game.screen = 2;
+}
+
+Game.prototype.csScreen = new Screen();
+Game.prototype.csScreen.reset = function(){
+	this.selected = 0;
+	this.emitted = false;
+	this.aSelected = 4;
+	this.wombats = new Array();
+}
+Game.prototype.csScreen.render = function(){
+	this.ctx.fillStyle="#000044";//dark blue
+	this.ctx.drawImage(Game.prototype.bgs[1],0,0,this.width,this.height);
+	this.ctx.fillStyle = "#ff9f2b";// orange
+	this.ctx.font = "100px mk1";
+	if(this.csScreen.emitted) {
+		this.ctx.font = "200px mk1";
+		this.ctx.fillStyle = "#ff9f2b";
+		this.ctx.fillText("WAITING",this.canvas.width/2 - this.ctx.measureText("WAITING").width/2,400);
+	} else {
+		this.ctx.fillText("CHOOSE YOUR FIGHTER",this.canvas.width/2 - this.ctx.measureText("CHOOSE YOUR FIGHTER").width/2,100);
+		for(x in Game.prototype.wombats){
+			flip = false
+			if(this.csScreen.wombats.indexOf(Game.prototype.wombats[x])> -1){
+				flip = true;
+			}
+			drawImage(this.ctx,Game.prototype.wombats[x].img[0],200*x + 50,230,200,300,0,flip);
+			this.ctx.font = "30px mk1";
+			this.ctx.fillStyle = "yellow";
+			this.ctx.fillText(Game.prototype.wombats[x].name,200*x + 150 - this.ctx.measureText(Game.prototype.wombats[x].name).width/2 ,200)
+			this.ctx.font = "20px mk1";
+			this.ctx.fillText("ATK  -  " + (Game.prototype.wombats[x].atk + 10),200*x + 90,570);
+			this.ctx.fillText("SPD  -  " + Game.prototype.wombats[x].spd,200*x + 90,595);
+			this.ctx.fillText("DEF  -  " + Game.prototype.wombats[x].def,200*x + 90,620);
+			this.ctx.fillText("HP  -  " + (Game.prototype.wombats[x].hp *10 + 100),200*x + 90,645);
+		}
+	
+	this.ctx.globalAlpha = .5;
+	this.ctx.strokeStyle = "#00cc00";//green
+	if(!this.csScreen.wombats[0]){
+		this.ctx.lineWidth = 5;
+	} else {
+		this.ctx.lineWidth = 10;
+	}
+	this.ctx.strokeRect(200*this.csScreen.selected + 50-5, 230, 200, 300);
+	if(this.csScreen.mode!=2 && this.csScreen.mode!=4){
+	this.ctx.strokeStyle = "#8b0000";//dark red
+	if(!this.csScreen.wombats[1]){
+		this.ctx.lineWidth = 5;
+	} else {
+		this.ctx.lineWidth = 10;
+	}
+	this.ctx.strokeRect(200*this.csScreen.aSelected + 50-5, 230, 200, 300);
+	}
+	}
+	this.ctx.globalAlpha = 1;
+}
+
+Game.prototype.csScreen.update = function(){
+	if(this.keys[68]){//d
+		if(!this.csScreen.wombats[0]){
+			if(this.csScreen.selected<Game.prototype.wombats.length -1){
+				this.csScreen.selected++;
+			} else {
+				this.csScreen.selected = 0;
+			}
+			this.keys[68] = false;
+		}
+	}
+	if(this.keys[65]){//a
+		if(!this.csScreen.wombats[0]){
+			if(this.csScreen.selected>0){
+				this.csScreen.selected--;
+			} else {
+				this.csScreen.selected = Game.prototype.wombats.length -1;
+			}
+			this.keys[65] = false;
+		}
+	}
+	if(this.keys[83]||this.keys[87]){
+		this.csScreen.wombats[0] = Game.prototype.wombats[this.csScreen.selected];
+	}
+	if(this.csScreen.mode != 2 && this.csScreen.mode!=4){
+		if(this.keys[76]){//l
+			if(!this.csScreen.wombats[1]){
+				if(this.csScreen.aSelected<Game.prototype.wombats.length -1){
+					this.csScreen.aSelected++;
+				} else {
+					this.csScreen.aSelected = 0;
+				}
+				this.keys[76] = false;
+			}
+		}
+		if(this.keys[74]){//j
+			if(!this.csScreen.wombats[1]){
+				if(this.csScreen.aSelected>0){
+					this.csScreen.aSelected--;
+				} else {
+					this.csScreen.aSelected = Game.prototype.wombats.length -1;
+				}
+				this.keys[74] = false;
+			}
+		}
+		if(this.keys[75]||this.keys[73]){
+			this.csScreen.wombats[1] = Game.prototype.wombats[this.csScreen.aSelected];
+		}
+	}
+	if(this.keys[27]){
+		this.screen = 1;
+		if(this.csScreen.emitted){
+			socket.emit('end',true);
+		}
+		this.keys = new Array();
+	}
+	if(this.keys[13]||this.keys[32]){
+		this.keys = new Array();
+	}
+	//check for char selection
+	if(this.csScreen.wombats[0]){
+		if(this.csScreen.wombats[1] || this.csScreen.mode == 2 || this.csScreen.mode == 4){
+			this.igScreen.reset();
+			this.igScreen.wombats = this.csScreen.wombats;
+			if(this.csScreen.mode != 4){
+				if(this.csScreen.mode == 2){
+					this.igScreen.wombats.push(Game.prototype.dummy);
+				}
+				this.igScreen.softReset();
+				this.igScreen.mode = this.csScreen.mode;
+				this.screen = 3;
+			} else {
+				if(!this.csScreen.emitted){
+					socket.emit('join',this.csScreen.selected);
+					this.csScreen.emitted = true;
+				}
+			}
+
+		}
+	}
+}
+
+
+
+Game.prototype.igScreen = new Screen(1);
+Game.prototype.igScreen.wins = [0,0];
+Game.prototype.igScreen.img = [newImage("Assets/Health bar red.png"),newImage("Assets/Health bar green.png")]
+Game.prototype.igScreen.render = function(){ //draws ingame 
+	
+	//this.ctx.fillStyle="#000044";//dark blue
+	//this.ctx.fillRect(0,0,this.width,this.height);
+	this.ctx.drawImage(this.igScreen.bg,0,0,this.width,this.height);
+	this.ctx.fillStyle = "#8b0000";//dark red
+	this.ctx.drawImage(this.igScreen.img[0],100,40,400,40);
+	this.ctx.drawImage(this.igScreen.img[0],600,40,400,40);
+	this.ctx.fillStyle = "#00cc00";//green
+	if(this.igScreen.player[0].hp>=0){
+		this.ctx.drawImage(this.igScreen.img[1],100,40,400*(this.igScreen.player[0].hp/this.igScreen.player[0].maxHp),40);
+	}
+	if(this.igScreen.player[1].hp>=0){
+		this.ctx.drawImage(this.igScreen.img[1],600 + (400 - 400*(this.igScreen.player[1].hp/this.igScreen.player[1].maxHp)),40,400*(this.igScreen.player[1].hp/this.igScreen.player[1].maxHp),40);
+	}
+	
+	this.ctx.fillStyle = "yellow";//guess what, this is  ing yellow lol
+	this.ctx.font = "25px mk1";
+	this.ctx.fillText(this.igScreen.player[0].name,125,68);
+	this.ctx.fillText(this.igScreen.player[1].name,975 - this.ctx.measureText(this.igScreen.player[1].name).width,68);
+	this.ctx.fillText(this.igScreen.wins[0] + " wins",100,30);
+	this.ctx.fillText(this.igScreen.wins[1] + " wins",1000 - this.ctx.measureText(this.igScreen.player[1].wins + " wins").width,30);
+	for(x in this.igScreen.player){
+		drawImage(this.ctx,this.igScreen.player[x].img[this.igScreen.player[x].frame],this.igScreen.player[x].x,this.igScreen.player[x].y + 90*this.igScreen.player[x].dead,this.igScreen.player[x].width,this.igScreen.player[x].height,90*this.igScreen.player[x].dead,this.igScreen.player[x].flip);
+		for(y in this.igScreen.player[x].bubbles){
+		//	drawImage(this.ctx,this.igScreen.player[x].bubbles[y].img,this.igScreen.player[x].x+95 - 230*this.igScreen.player[x].flip,this.igScreen.player[x].y-this.igScreen.player[x].bubbles[y].height+ 120,this.igScreen.player[x].bubbles[y].width,this.igScreen.player[x].bubbles[y].height,0,this.igScreen.player[x].flip);.pn.
+			//this.ctx.fillText(this.igScreen.player[x].bubbles[y].text,this.igScreen.player[x].x+95 - 230*this.igScreen.player[x].flip,this.igScreen.player[x].y-this.igScreen.player[x].bubbles[y].height+ 150)
+		}
+	}
+	for(x in this.igScreen.projectiles){
+		drawImage(this.ctx, this.igScreen.projectiles[x].img,this.igScreen.projectiles[x].x,this.igScreen.projectiles[x].y,this.igScreen.projectiles[x].width,this.igScreen.projectiles[x].height,0,this.igScreen.projectiles[x].flip);
+	}
+	for(x in this.igScreen.faders){
+		this.ctx.globalAlpha = this.igScreen.faders[x].timer;
+		this.ctx.fillStyle = this.igScreen.faders[x].color;
+		this.ctx.font = this.igScreen.faders[x].size + "px mk1";
+		this.ctx.fillText(this.igScreen.faders[x].text,this.igScreen.faders[x].x,this.igScreen.faders[x].y)
+	}
+	this.ctx.globalAlpha = 1;
+}
+
+Attack.prototype.use = function(igScreen,player){
+	if(!this.stunTimer){
+		var temp = 1;
+		if(player.flip){
+			temp = -1;
+		}
+		igScreen.projectiles.push(new Projectile(player.x + this.projectile.x,player.y + this.projectile.y,this.projectile.width,this.projectile.height,this.projectile.spdX*temp,this.projectile.spdY,this.projectile.dmg,this.projectile.img,player.flip));
+	}
+}
+
+Game.prototype.igScreen.bg = Game.prototype.bgs[0];
+
+Game.prototype.igScreen.player = [new Player(Game.prototype.wombats[2],200,300,30,480,false),new Player(Game.prototype.wombats[4],200,300,1000,480,true)];
+
+Game.prototype.igScreen.collisonManager = function(guy1,guy2){
+	if(guy2.kicking){
+		if(this.collide(guy1.x,guy1.y,guy1.width,guy1.height,guy2.x +(guy2.kpSize*(!guy2.flip*-1))+ guy2.width * !guy2.flip,(guy2.y + guy2.height)-guy2.kpSize,guy2.kpSize,guy2.kpSize)){
+			guy1.takeDamage(guy2);
+			guy2.unkick();
+			guy2.attacks[3].timer = guy2.attackDelay;
+		/*	game.ctx.globalAlpha = 0.3;
+			game.ctx.fillRect(guy1.x,guy1.y,guy1.width,guy1.height);
+			game.ctx.fillRect(guy2.x +(guy2.kpSize*(!guy2.flip*-1))+ guy2.width * !guy2.flip,(guy2.y + guy2.height)-guy2.kpSize,guy2.kpSize,guy2.kpSize);
+			game.ctx.globalAlpha = 1;*/
+		}
+	}
+	if(guy2.punching){
+		if(this.collide(guy1.x,guy1.y,guy1.width,guy1.height,guy2.x +(guy2.kpSize*(!guy2.flip*-1))+ guy2.width * !guy2.flip,guy2.y+guy2.kpSize+50,guy2.kpSize,guy2.kpSize)){
+			guy1.takeDamage(guy2);
+			guy2.unpunch();
+			guy2.attacks[2].timer = guy2.attackDelay;
+		/*	game.ctx.globalAlpha = 0.3;
+			game.ctx.fillRect(guy1.x,guy1.y,guy1.width,guy1.height);
+			game.ctx.fillRect(guy2.x +(guy2.kpSize*(!guy2.flip*-1))+ guy2.width * !guy2.flip,guy2.y+guy2.kpSize+50,guy2.kpSize,guy2.kpSize);
+			game.ctx.globalAlpha = 1;*/
+		}
+	}
+
+	if(guy1.kicking){
+		if(this.collide(guy2.x,guy2.y,guy2.width,guy2.height,guy1.x +(guy1.kpSize*(!guy1.flip*-1))+ guy1.width * !guy1.flip,(guy1.y + guy1.height)-guy1.kpSize,guy1.kpSize,guy1.kpSize)){
+			guy2.takeDamage(guy1);
+			guy1.unkick();
+			guy1.attacks[3].timer = guy1.attackDelay;
+		/*	game.ctx.globalAlpha = 0.3;
+			game.ctx.fillRect(guy2.x,guy2.y,guy2.width,guy2.height);
+			game.ctx.fillRect(guy1.x +(guy1.kpSize*(!guy1.flip*-1))+ guy1.width * !guy1.flip,(guy1.y + guy1.height)-guy1.kpSize,guy1.kpSize,guy1.kpSize);
+			game.ctx.globalAlpha = 1;*/
+		}
+	}
+	if(guy1.punching){
+			if(this.collide(guy2.x,guy2.y,guy2.width,guy2.height,guy1.x +(guy1.kpSize*(!guy1.flip*-1))+ guy1.width * !guy1.flip,guy1.y +guy1.kpSize + 50,guy1.kpSize,guy1.kpSize)){
+			guy2.takeDamage(guy1);
+			guy1.unpunch();
+			guy1.attacks[2].timer = guy1.attackDelay;
+			/*game.ctx.globalAlpha = 0.3;
+			game.ctx.fillRect(guy2.x,guy2.y,guy2.width,guy2.height);
+			game.ctx.fillRect(guy1.x +(guy1.kpSize*(!guy1.flip*-1))+ guy1.width * !guy1.flip,guy1.y + guy1.kpSize + 50,guy1.kpSize,guy1.kpSize);
+			game.ctx.globalAlpha = 1;*/
+		}
+	}
+}
+
+Game.prototype.igScreen.collide = function(ax,ay,aw,ah,bx,by,bw,bh){
+	if(ax+aw>bx&&ax<bx+bw&&ay+ah>by&&ay<by+bh){
+		return true;
+	}
+	return false;
+}
+
+Game.prototype.igScreen.update = function(){
+	//Player 1 controls
+	if(!this.igScreen.locked){
+	if(this.keys[65]){//a
+		if(!this.igScreen.player[0].ducked){
+			this.igScreen.player[0].x -= this.igScreen.player[0].spd;
+		this.igScreen.player[0].flip = true;
+		}
+		
+	}
+	if(this.keys[68]){//d
+		if(!this.igScreen.player[0].ducked){
+			this.igScreen.player[0].x += this.igScreen.player[0].spd;
+			this.igScreen.player[0].flip = false;
+		}
+	}
+	if(this.keys[83]){//s
+		this.igScreen.player[0].duck();
+	} else {
+		this.igScreen.player[0].unduck();
+	}
+	if(this.keys[87]){//w
+		this.igScreen.player[0].jump(this);
+		this.keys[87] = false;
+	}
+	if(this.keys[81]){//q
+		//this.igScreen.player[0].attacks[0].use(this.igScreen,this.igScreen.player[0]);
+		//this.keys[81] = false;
+		this.igScreen.player[0].punch();
+	} else {
+		this.igScreen.player[0].unpunch();
+	}
+	if(this.keys[69]){//e
+		this.igScreen.player[0].kick();
+	} else {
+		this.igScreen.player[0].unkick();
+	}
+	//Player 2 controls, only used if in sparring mode
+	if(this.igScreen.mode == 1){
+		if(this.keys[74]){//j
+		if(!this.igScreen.player[1].ducked){
+			this.igScreen.player[1].x -= this.igScreen.player[1].spd;
+			this.igScreen.player[1].flip = true;
+		}
+	}
+	if(this.keys[76]){//l
+		if(!this.igScreen.player[1].ducked){
+			this.igScreen.player[1].x += this.igScreen.player[1].spd;
+			this.igScreen.player[1].flip = false;
+		}
+		
+	}
+	if(this.keys[75]){//k
+		this.igScreen.player[1].duck();
+	} else {
+		this.igScreen.player[1].unduck();
+	}
+	if(this.keys[73]){//i
+		this.igScreen.player[1].jump(this);
+		this.keys[73] = false;
+	}
+	if(this.keys[85]){//u
+		this.igScreen.player[1].punch();
+	} else {
+		this.igScreen.player[1].unpunch();
+	}
+	if(this.keys[79]){//o
+		this.igScreen.player[1].kick();
+	} else {
+		this.igScreen.player[1].unkick();
+	}
+	}
+	if(this.keys[27]){
+		this.keys = new Array();
+		this.screen = 5;
+	}
+	for(x in this.igScreen.player){
+		if(this.igScreen.player[x].hp<=0){
+			killer = 1;
+			if(x!=0){
+				this.igScreen.wins[0]++;
+				killer = 0;
+			} else {
+				this.igScreen.wins[1]++;
+			}
+			this.igScreen.player[x].dead = true;
+			this.igScreen.endRound(this.igScreen.player[killer],this);
+			break;
+		}
+		
+		
+	}
+	if(this.igScreen.mode === 4){
+		socket.emit('update',this.igScreen.player[0]);
+	}	
+	if(this.igScreen.mode == 3){
+		if(this.igScreen.player[0].y< this.igScreen.player[1].y && !this.igScreen.player[1].ducked){
+			this.igScreen.player[1].jump(this);
+		}
+		if(this.igScreen.player[0].punching && this.igScreen.player[0].y <= this.igScreen.player[1].y&&this.igScreen.collide(this.igScreen.player[0].x,this.igScreen.player[0].y,this.igScreen.player[0].width,this.igScreen.player[0].height,this.igScreen.player[1].x,this.igScreen.player[1].y,this.igScreen.player[1].width,this.igScreen.player[1].height) && Math.random()>.1){
+			this.igScreen.player[1].duck();
+		} else {
+			this.igScreen.player[1].unduck();
+		}
+		if(this.igScreen.player[0].x>this.igScreen.player[1].x &&!this.igScreen.player[1].ducked){
+			this.igScreen.player[1].x += this.igScreen.player[1].spd;
+			this.igScreen.player[1].flip = false;
+		}
+		if(this.igScreen.player[0].x<this.igScreen.player[1].x&&!this.igScreen.player[1].ducked){
+			this.igScreen.player[1].x -= this.igScreen.player[1].spd;
+			this.igScreen.player[1].flip = true;
+		}
+		if(this.igScreen.collide(this.igScreen.player[0].x,this.igScreen.player[0].y,this.igScreen.player[0].width,this.igScreen.player[0].height,this.igScreen.player[1].x,this.igScreen.player[1].y,this.igScreen.player[1].width,this.igScreen.player[1].height) && Math.random()>.1){
+			if(Math.random>.5){
+				this.igScreen.player[1].kick();
+			} else {
+				this.igScreen.player[1].punch();
+			}
+		}
+
+
+	}
+
+	//Projectile Movement
+	for(x in this.igScreen.projectiles){
+		this.igScreen.projectiles[x].x+=this.igScreen.projectiles[x].spdX;
+		this.igScreen.projectiles[x].y+=this.igScreen.projectiles[x].spdY;
+		for(y in this.igScreen.player){
+			if(this.igScreen.collide(this.igScreen.projectiles[x].x,this.igScreen.projectiles[x].y,this.igScreen.projectiles[x].width,this.igScreen.projectiles[x].height,this.igScreen.player[y].x,this.igScreen.player[y].y,this.igScreen.player[y].width,this.igScreen.player[y].height)){
+				if(this.igScreen.player[y].id != this.igScreen.projectiles[x].id){
+					this.igScreen.player[y].hp -= this.igScreen.projectiles[x].dmg;
+					if(this.igScreen.projectiles[x].pushback){
+						if(this.igScreen.player[y].x > this.igScreen.projectiles[x].x){
+							this.igScreen.player[y].x += 50;
+						} else {
+							this.igScreen.player[y].x -= 50;
+						}
+					}
+					this.igScreen.projectiles.splice(x,1);
+					x++;
+					break;
+				}
+			}
+		}
+		
+	}
+	this.igScreen.collisonManager(this.igScreen.player[0],this.igScreen.player[1]);
+	}
+	for(x in this.igScreen.player){
+		this.igScreen.player[x].update(this);
+	}
+	for(x in this.igScreen.faders){
+		this.igScreen.faders[x].timer-=.01;
+		if(this.igScreen.faders[x].timer<0){
+			this.igScreen.faders.splice(x,1);
+			x++;
+		}
+	}
+	if(this.igScreen.wins[0] == 3){
+		this.igScreen.player[1].x+=15 + (-30  *this.igScreen.player[0].flip);
+		this.igScreen.player[1].y-=15+this.igScreen.player[0].gravity;	
+	} else if(this.igScreen.wins[1] == 3) {
+		this.igScreen.player[0].x+=15 + (-30  *this.igScreen.player[1].flip);
+		this.igScreen.player[0].y-=15+this.igScreen.player[1].gravity;	
+	}
+}
+
+
+Game.prototype.igScreen.endRound = function(killer,game){
+	highWin = 0;
+	for(x in this.wins){
+		if(this.wins[x]>highWin){
+			highWin = this.wins[x];
+		}
+	}
+	game.igScreen.projectiles = new Array();
+	game.ctx.font = "100px mk1";
+	if(highWin == 3){
+		this.faders.push(new Fader(killer.name + " Wins",game.canvas.width/2 - game.ctx.measureText(killer.name + " Wins").width/2,200,"yellow",100));
+		this.faders.push(new Fader("WOMBALITY",game.canvas.width/2 - game.ctx.measureText("WOMBALITY").width/2,300,"#8b0000",100));
+		Game.prototype.audio[0].play();
+	} else{
+		this.faders.push(new Fader(killer.name + " Wins",game.canvas.width/2 - game.ctx.measureText(killer.name + " Wins").width/2,250,"yellow",100));
+	}
+	
+	this.locked = true;
+	this.interval = setInterval(function(){this.igScreen.softReset(this);clearInterval(this.igScreen.interval);}.bind(game),3000)
+}
+
+Game.prototype.igScreen.softReset = function(game){
+	this.faders = new Array();
+	this.locked = false;
+	
+	highWin = 0;
+	round = 1;
+	winner = 0;
+	for(x in this.wins){
+		round += this.wins[x]
+		if(this.wins[x]>highWin){
+			highWin = this.wins[x];
+			winner = x;
+		}
+	}	
+	winImg = this.player[winner].img[0];
+	this.player = [new Player(this.wombats[0],200,300,30,480,false,0),new Player(this.wombats[1],200,300,1000,480,true,1)];
+	switch(highWin){
+		case 0:
+			this.faders.push(new Fader("Round " + round,400,250,"yellow",100));
+			this.faders.push(new Fader("FIGHT",390,380,"#8b0000",120));
+			Game.prototype.audio[1].play();
+			//Get a speech bubble and pixelate it then stick it on the Player object and have it render on player but assign it from here
+		//	this.player[0].bubbles.push(new Bubble(this.player[0].sayings[0]));
+			//this.player[1].bubbles.push(new Bubble(this.player[1].sayings[0]));
+		break;
+		case 3:
+			if(this.mode == 1){
+				game.wnScreen.reset(winner,this.bg,winImg);
+				game.screen = 7;
+			} else {
+				game.mmScreen.reset();
+				game.screen = 1;
+				socket.emit('end');
+			}
+			
+		break;
+		default:
+			this.faders.push(new Fader("Round " + round,400,250,"yellow",100));
+			this.faders.push(new Fader("FIGHT",390,380,"#8b0000",120));
+			Game.prototype.audio[1].play();
+		break;
+	}
+}
+
+Game.prototype.igScreen.reset = function(){
+	this.wins = [0,0];
+	this.selected = 0;
+	this.mode = 0;
+	this.projectiles = new Array();
+	this.faders = new Array();
+}
+
+Player.prototype.takeDamage = function(biter){
+	this.hp -= (7 + biter.atk)/((10+this.def)/10);
+}
+
+Player.prototype.duck = function(){
+	if(!this.ducked){
+		this.combo.push(new ComboItem("duck"));
+		clearInterval(this.punchInterval);
+		clearInterval(this.kickInterval);
+		this.unkick();
+		this.unpunch();
+		this.height  = this.height / 2;
+		this.y += this.height;
+		this.ducked = true;
+		this.frame = 1;
+		this.gravity = this.gravity * 2;
+		this.def = this.def *2;
+	}
+}
+Player.prototype.unduck = function(){
+	if(this.ducked){
+		this.y -= this.height;
+		this.height = this.height * 2;
+		this.ducked = false;
+		this.frame = 0;
+		this.gravity = this.gravity / 2;
+		this.def = this.def /2;
+	}
+}
+Player.prototype.punch = function(){
+	if(!this.punching && !this.ducked){
+		if(!this.attacks[2].timer){
+			this.combo.push(new ComboItem("punch"));
+			this.punching = true;
+			if(this.ppunching){
+				this.frame = 4;
+			} else {		
+				this.frame = 2;
+			}
+			this.unkick();
+		} else {
+			this.unpunch();
+		}
+	}
+}
+Player.prototype.unpunch = function(){
+	if(this.punching){
+		this.punching = false;
+		this.punchInterval = setInterval(function(){if(this.frame==2||this.frame==4){this.frame = 0};clearInterval(this.punchInterval);}.bind(this),this.attackDelay/60 * 1000 /1.5);
+		if(this.ppunching){
+			this.ppunching = false;
+			this.atk = this.atk/2;
+		}
+	}
+}
+Player.prototype.kick = function(){
+	if(!this.kicking && !this.ducked){
+		if(!this.attacks[3].timer){
+			this.combo.push(new ComboItem("kick"));
+			this.kicking = true;
+			this.frame = 3;
+			this.unpunch();
+		}else{
+			this.unkick();
+		}
+	}
+}
+Player.prototype.unkick = function(){
+	if(this.kicking){
+		this.kicking = false;
+		this.kickInterval = setInterval(function(){if(this.frame == 3){this.frame = 0};clearInterval(this.kickInterval);}.bind(this),this.attackDelay/60 * 1000 /1.5);
+		if(this.ppunching){
+			this.ppunching = false;
+			this.atk = this.atk/2;
+		}
+	}
+}
+
+Player.prototype.jump = function(game){
+	var temp = this.doubleJump && this.canDoubleJump;
+	if(this.y + this.height >= game.canvas.height -20|| temp){
+		this.combo.push(new ComboItem("jump"));
+		if(this.y + this.height < game.canvas.height){
+			this.jumpValue = 0;
+			this.doubleJump = false;
+		}
+		this.jumping = true;
+	}
+	
+}
+Player.prototype.update = function(game){
+	if(this.jumping && !this.dead){
+		if(this.jumpValue<this.maxJump){
+			this.y -= this.gravity*1.5;
+			this.jumpValue += this.gravity*1.5;
+		} else {
+			this.jumping = false;
+			this.jumpValue = 0;
+		}
+	}else{
+	this.y+=this.gravity;//gravity
+	}
+	if(this.x + this.width > game.canvas.width && !this.dead){
+		this.x = game.canvas.width - this.width;
+	}
+	if(this.x < 0 && !this.dead){
+		this.x = 0;
+	}
+	if(this.y + this.height > game.canvas.height - 20){
+		this.y = game.canvas.height - this.height -20;
+		this.doubleJump = true;
+	}
+	for(x in this.attacks){
+		if(this.attacks[x].timer>0){
+			this.attacks[x].timer--;
+		}
+	}
+	temp="";
+	for(x in this.combo){
+		temp += this.combo[x].id;
+	}
+	for(x in this.combos){
+		if(temp.indexOf(this.combos[x])>-1){
+			this.combo = new Array();
+			this.power[x].bind(this)(game);
+			break;
+		}
+	}
+	//console.log(temp)
+	if(this.charging){
+		if(this.chargecount>10){
+			this.frame = 0;
+			this.atk = this.atk*5;
+			this.charging = false;
+			this.width = 200;
+		} else {
+			this.punching = true;
+			this.frame = 5;
+			this.x += 10 + (this.flip * -20);
+			this.chargecount++;
+		}
+		
+	}
+
+}
+//end
+
+
+
+// that runs every frame
+
+
+
+Game.prototype.render = function(){
+	this.ctx.clearRect(0,0,this.canvas.width,this.canvas.height);
+	this[this.screens[this.screen]].render.bind(this)();
+}
+
+Game.prototype.update = function(){
+	this.render();
+	if(innerHeight-40<700){
+		this.canvas.style.height = innerHeight -40 + "px";
+	} else {
+		this.canvas.style.height = 700 + "px";
+	}
+	this[this.screens[this.screen]].update.bind(this)();
+}
+
+
+
+//Event listeners tily coded and could be done better but neccesary for game so stay down there
+
+document.addEventListener("keydown",function(e){
+	var code = e.keyCode ? e.keyCode : e.which;
+	game.keys[code] = true;
+});
+
+document.addEventListener("keyup",function(e){
+	var code = e.keyCode ? e.keyCode : e.which;
+	game.keys[code] = false;
+});
+
+
+window.onload=function(){
+	game = new Game();
+	game.init();
+}
+</script>
+
+
+<style>
+@font-face {
+    font-family: mk1;
+    src: url(Assets/mk1.ttf);
+}
+</style>
