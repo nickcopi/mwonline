@@ -1,8 +1,14 @@
-FROM node:latest
+FROM alpine:latest
+
+RUN apk update
+
+RUN apk add nodejs
+
+RUN apk add nodejs-npm
 
 WORKDIR /app
 
-COPY mwserver /app
+COPY . /app
 
 RUN npm install
 

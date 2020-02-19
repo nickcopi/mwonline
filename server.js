@@ -1,4 +1,9 @@
-const io = require('socket.io')();
+const express = require('express');
+const app = express();
+const server = require('http').Server(app);
+const io = require('socket.io')(server);
+
+app.use(express.static('public'));
 
 let emptyGame = false;
 let games = [];
@@ -97,5 +102,4 @@ io.on('connection', socket => {
 	setInterval(()=>{console.log(emptyGame,games,gameIndexs)},1000);
 });
 let port = 3000
-io.listen(port);
-console.log(`Listening on port ${port}.`);
+server.listen(port);

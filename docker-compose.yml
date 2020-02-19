@@ -1,0 +1,7 @@
+
+version: "2.0"
+services:
+        mortalwombat:
+                build: .
+                ports:
+                - "8000:3000"
