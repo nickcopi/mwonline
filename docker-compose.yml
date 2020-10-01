@@ -1,7 +1,7 @@
-
 version: "2.0"
 services:
         mortalwombat:
                 build: .
+                restart: always
                 ports:
                 - "8000:3000"
