@@ -3,8 +3,8 @@
 	"tags":["Game"],
 	"description":"A fighting game made for FBLA 2017 with art assets from Ben Allen.",
 	"embed":{
-		"width":1400,
-		"height":800,
+		"width":1120,
+		"height":745,
 		"file":"public/mortalwombat.html"
 	},
 	"date":"February 2017"
