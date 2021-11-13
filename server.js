@@ -101,5 +101,5 @@ io.on('connection', socket => {
 	});
 	setInterval(()=>{console.log(emptyGame,games,gameIndexs)},1000);
 });
-let port = 3000
+let port = 8000
 server.listen(port);

@@ -13,8 +13,8 @@ if (!Function.prototype.bind) { // check if native implementation available
     }; 
   };
 }
-
-var socket = io.connect(`ws://${location.host}`);
+const protocol = (location.protocol === 'https:')?'wss://':'ws://';
+var socket = io.connect(`${protocol}${location.host}`);
 socket.on('ready',(wom2)=>{
 	game.igScreen.wombats.push(Game.prototype.wombats[wom2]);
 	game.igScreen.softReset();
