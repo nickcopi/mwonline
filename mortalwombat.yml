@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mwonline-server
+  labels:
+    app: mwonline
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mwonline
+  template:
+    metadata:
+      labels:
+        app: mwonline
+    spec:
+      containers:
+        - name: mwonline
+          image: copinf/mwonline
+          imagePullPolicy: Always
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mwonline-service
+  labels:
+    app: mwonline
+spec:
+  ports:
+  - port: 8000
+    protocol: TCP
+    targetPort: 8000
+  selector:
+    app: mwonline
+  type: LoadBalancer
